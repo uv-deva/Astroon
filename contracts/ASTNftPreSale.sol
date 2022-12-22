@@ -156,7 +156,7 @@ contract ASTNftPresale is
 
     function buyPublicSale(uint256 _amount) external payable {
         require(
-            SaleInfoMap[SALETYPE.PUBLIC_SALE].startTime <= block.timestamp &&
+            SaleInfoMap[SALETYPE.PUBLIC_SALE].startTime >= block.timestamp &&
             SaleInfoMap[SALETYPE.PUBLIC_SALE].endTime <= block.timestamp,
             "PublicSale is InActive"
         );
