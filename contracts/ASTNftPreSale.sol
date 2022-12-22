@@ -24,6 +24,8 @@ contract ASTNftPresale is
     ERC721BurnableUpgradeable,
     ERC2981Upgradeable
 {
+
+    enum SALETYPE {PRIVATE_SALE, PUBLIC_SALE}
     using Strings for uint256;
     using CountersUpgradeable for CountersUpgradeable.Counter;
     CountersUpgradeable.Counter private tokenIdCount;
@@ -34,19 +36,16 @@ contract ASTNftPresale is
     string public baseURI;
     string public notRevealedUri;
     string public baseExtension = ".json";
-    bool public presaleM;
-    bool public publicM;
-    bool public revealed = false;
-    address private recipent;
+    bool public revealed ;
     uint256 maxPresaleLimit = 4;
+    uint256 minToken = 110;
 
     struct SaleInfo {
         uint256 cost;
         uint256 mintCost;
         uint256 maxSupply;
-        uint256 presaleStartTime;
-        uint256 presaleEndTime;
-        bool goalReached;
+        uint256 startTime;
+        uint256 endTime;
     }
 
     // Events
@@ -54,7 +53,7 @@ contract ASTNftPresale is
     event BoughtNFT(address indexed to, uint256 amount, uint256 saleId);
 
     // Mapping
-    mapping(uint256 => SaleInfo) public SaleInfoMap; // sale mapping
+    mapping(SALETYPE => SaleInfo) public SaleInfoMap; // sale mapping
     mapping(uint256=>uint256[]) public tierMap;
 
     function initialize(
@@ -75,34 +74,25 @@ contract ASTNftPresale is
         token = IERC20MetadataUpgradeable(_tokenAddr);
     }
 
-    function togglePreSale() external onlyOwner {
-        presaleM = !presaleM;
-    }
-
-    function togglePublicSale() external onlyOwner {
-        publicM = !publicM;
-    }
-
     function setMaxPreSaleLimit(uint256 _presaleLimit) external onlyOwner {
         maxPresaleLimit = _presaleLimit;
     }
 
     // Start Sale
     function startSale(
+        SALETYPE saleType,
         uint256 _cost,
         uint256 _mintCost,
         uint256 _maxSupply,
-        uint256 _presaleStartTime,
-        uint256 _presaleEndTime
+        uint256 _startTime,
+        uint256 _endTime
     ) external onlyOwner returns (uint256) {
-        saleId++;
-        SaleInfoMap[saleId] = SaleInfo (
+        SaleInfoMap[saleType] = SaleInfo (
             _cost,
             _mintCost,
             _maxSupply,
-            _presaleStartTime,
-            _presaleEndTime,
-            false
+            _startTime,
+            _endTime
         );
         emit SaleStart(saleId);
         return saleId;
@@ -113,12 +103,15 @@ contract ASTNftPresale is
         tierMap[category][1] = _max;
     }
     
+    function setMinimumToken(uint256 _minToken) external onlyOwner {
+        minToken = _minToken;
+    }
 
     function validateNftLimit(address _addr, uint256 nftQty) internal view {
         uint256 tokenBalance = token.balanceOf(_addr);
         uint256 nftBalance = balanceOf(_addr);
         require (
-            tokenBalance >= 110*10**token.decimals(),
+            tokenBalance >= minToken*10**token.decimals(),
             "Insufficient balance"
         );
         require (
@@ -137,15 +130,11 @@ contract ASTNftPresale is
 
     function buyPresale(uint256 nftQty) external payable {
         require(
-            presaleM,
-            "Private Sale is off"
-        );
-        require(
-            SaleInfoMap[saleId].presaleStartTime >= block.timestamp && 
-            SaleInfoMap[saleId].presaleEndTime <= block.timestamp,
+            SaleInfoMap[SALETYPE.PRIVATE_SALE].startTime >= block.timestamp && 
+            SaleInfoMap[SALETYPE.PRIVATE_SALE].endTime <= block.timestamp,
             "PrivateSale is InActive"
         );
-        SaleInfo memory details = SaleInfoMap[saleId];
+        SaleInfo memory details = SaleInfoMap[SALETYPE.PRIVATE_SALE];
         validateNftLimit(_msgSender(), nftQty);
         require(
             msg.value == (nftQty * (details.cost + details.mintCost)),
@@ -167,15 +156,11 @@ contract ASTNftPresale is
 
     function buyPublicSale(uint256 _amount) external payable {
         require(
-            publicM,
-            "Public Sale is Off"
-        );
-        require(
-            SaleInfoMap[saleId].presaleStartTime <= block.timestamp &&
-            SaleInfoMap[saleId].presaleEndTime <= block.timestamp,
+            SaleInfoMap[SALETYPE.PUBLIC_SALE].startTime <= block.timestamp &&
+            SaleInfoMap[SALETYPE.PUBLIC_SALE].endTime <= block.timestamp,
             "PublicSale is InActive"
         );
-        SaleInfo memory detail = SaleInfoMap[saleId];
+        SaleInfo memory detail = SaleInfoMap[SALETYPE.PUBLIC_SALE];
         require(
             msg.value == (_amount * (detail.cost + detail.mintCost)),
             "Insufficient value"
@@ -271,27 +256,22 @@ contract ASTNftPresale is
         baseExtension = _newBaseExtension;
     }
 
-    function setCost(uint256 _saleId, uint256 _newCost) external onlyOwner {
-        SaleInfoMap[_saleId].cost = _newCost;
+    function setCost(SALETYPE saleType, uint256 _newCost) external onlyOwner {
+        SaleInfoMap[saleType].cost = _newCost;
     }
 
     function setMintCost(
-        uint256 _saleId,
+        SALETYPE saleType,
         uint256 _newMintCost
     ) external onlyOwner {
-        SaleInfoMap[_saleId].mintCost = _newMintCost;
+        SaleInfoMap[saleType].mintCost = _newMintCost;
     }
 
-    function goalReached(uint256 _saleId) public view returns (bool) {
-        SaleInfo memory detail = SaleInfoMap[_saleId];
-        return (tokenIdCount.current() == detail.maxSupply);
-    }
-
-    function isActive(uint256 _saleId) external view returns (bool) {
-        SaleInfo memory detail = SaleInfoMap[_saleId];
-        return (block.timestamp >= detail.presaleStartTime && // Must be after the start date
-            block.timestamp <= detail.presaleEndTime && // Must be before the end date
-            goalReached(_saleId) == false); // Goal must not already be reached
+    function isActive(SALETYPE saleType) external view returns (bool) {
+        SaleInfo memory detail = SaleInfoMap[saleType];
+        return (block.timestamp >= detail.startTime && // Must be after the start date
+            block.timestamp <= detail.endTime // Must be before the end date
+        );
     }
 
     function pause() external onlyOwner {
