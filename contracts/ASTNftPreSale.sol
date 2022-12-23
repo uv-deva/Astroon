@@ -35,10 +35,10 @@ contract ASTNftPresale is
     uint256 private saleId;
     string public baseURI;
     string public notRevealedUri;
-    string public baseExtension = ".json";
+    string public baseExtension;
     bool public revealed ;
-    uint256 maxPresaleLimit = 4;
-    uint256 minToken = 110;
+    uint256 maxPresaleLimit;
+    uint256 minToken;
 
     struct SaleInfo {
         uint256 cost;
@@ -48,19 +48,27 @@ contract ASTNftPresale is
         uint256 endTime;
     }
 
+    struct tierInfo {
+        uint256 minValue;
+        uint256 maxValue;
+    }
+
     // Events
     event SaleStart(uint256 saleId);
     event BoughtNFT(address indexed to, uint256 amount, uint256 saleId);
 
     // Mapping
     mapping(SALETYPE => SaleInfo) public SaleInfoMap; // sale mapping
-    mapping(uint256=>uint256[]) public tierMap;
+    mapping(uint256=>tierInfo) public tierMap;
 
     function initialize(
         string memory _name,
         string memory _symbol,
         string memory _baseUri,
-        address _tokenAddr
+        address _tokenAddr,
+        string memory _baseExtension,
+        uint256 _maxPresaleLimit,
+        uint256 _minToken
     ) public initializer {
         __ERC721_init(_name, _symbol);
         __ERC721URIStorage_init();
@@ -71,6 +79,9 @@ contract ASTNftPresale is
         __ERC2981_init();
         __ERC2981_init_unchained();
         baseURI = _baseUri;
+        baseExtension = _baseExtension;
+        maxPresaleLimit = _maxPresaleLimit;
+        minToken = _minToken;
         token = IERC20MetadataUpgradeable(_tokenAddr);
     }
 
@@ -98,9 +109,9 @@ contract ASTNftPresale is
         return saleId;
     }
 
-    function setTireMap(uint category, uint _min, uint _max) external onlyOwner {
-        tierMap[category][0] = _min;
-        tierMap[category][1] = _max;
+    function setTireMap(uint256 category, uint256 _min, uint256 _max) external onlyOwner {
+        tierMap[category].minValue = _min;
+        tierMap[category].maxValue = _max;
     }
     
     function setMinimumToken(uint256 _minToken) external onlyOwner {
@@ -111,16 +122,16 @@ contract ASTNftPresale is
         uint256 tokenBalance = token.balanceOf(_addr);
         uint256 nftBalance = balanceOf(_addr);
         require (
-            tokenBalance >= minToken*10**token.decimals(),
+            tokenBalance >= minToken,
             "Insufficient balance"
         );
         require (
             nftBalance + nftQty <= maxPresaleLimit,
-            "buying limit exceeded"
+            "buying Limit exceeded"
         );
-        uint256 count = tokenBalance >= tierMap[1][0] && tokenBalance <= tierMap[1][1] ? 1 
-            : tokenBalance >= tierMap[2][0] && tokenBalance <= tierMap[2][1] ? 2 
-            : tokenBalance >= tierMap[3][0] && tokenBalance <= tierMap[3][1] ? 3 
+        uint256 count = tokenBalance >= tierMap[1].minValue && tokenBalance <= tierMap[1].maxValue ? 1 
+            : tokenBalance >= tierMap[2].minValue && tokenBalance <= tierMap[2].maxValue ? 2 
+            : tokenBalance >= tierMap[3].minValue && tokenBalance <= tierMap[3].maxValue ? 3 
             : 4;
         require(
             count >= nftBalance && (count - nftBalance) >= nftQty,
@@ -130,8 +141,8 @@ contract ASTNftPresale is
 
     function buyPresale(uint256 nftQty) external payable {
         require(
-            SaleInfoMap[SALETYPE.PRIVATE_SALE].startTime >= block.timestamp && 
-            SaleInfoMap[SALETYPE.PRIVATE_SALE].endTime <= block.timestamp,
+            SaleInfoMap[SALETYPE.PRIVATE_SALE].startTime <= block.timestamp && 
+            SaleInfoMap[SALETYPE.PRIVATE_SALE].endTime >= block.timestamp,
             "PrivateSale is InActive"
         );
         SaleInfo memory details = SaleInfoMap[SALETYPE.PRIVATE_SALE];
@@ -156,8 +167,8 @@ contract ASTNftPresale is
 
     function buyPublicSale(uint256 _amount) external payable {
         require(
-            SaleInfoMap[SALETYPE.PUBLIC_SALE].startTime >= block.timestamp &&
-            SaleInfoMap[SALETYPE.PUBLIC_SALE].endTime <= block.timestamp,
+            SaleInfoMap[SALETYPE.PUBLIC_SALE].startTime <= block.timestamp &&
+            SaleInfoMap[SALETYPE.PUBLIC_SALE].endTime >= block.timestamp,
             "PublicSale is InActive"
         );
         SaleInfo memory detail = SaleInfoMap[SALETYPE.PUBLIC_SALE];
@@ -182,7 +193,7 @@ contract ASTNftPresale is
         address from,
         address to,
         uint256 tokenId
-    ) public override (ERC721Upgradeable) {
+    ) public override (ERC721Upgradeable, IERC721Upgradeable) {
         require(
             _isApprovedOrOwner(_msgSender(), tokenId),
             "ERC721: caller is not token owner nor approved"

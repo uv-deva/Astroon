@@ -11,7 +11,7 @@ type FileName =
 
 const network = () => {
   const { DEPLOY_NETWORK } = process.env;
-  if (!DEPLOY_NETWORK || DEPLOY_NETWORK === "hardhat") return "rinkeby";
+  if (!DEPLOY_NETWORK || DEPLOY_NETWORK === "hardhat") return "hardhat";
   if (DEPLOY_NETWORK) return DEPLOY_NETWORK;
   return "mainnet";
 };

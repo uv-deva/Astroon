@@ -1,14 +1,12 @@
 import type { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signer-with-address";
-import type { Fixture } from "ethereum-waffle";
-import { Signer } from "ethers";
 
-import {
-  ASTToken  
-} from "../src/types";
+import type { ASTNftPresale } from "../types/ASTNftPresale";
+
+type Fixture<T> = () => Promise<T>;
 
 declare module "mocha" {
   export interface Context {
-    ASTToken: ASTToken;
+    ASTNftPresale: ASTNftPresale;
     loadFixture: <T>(fixture: Fixture<T>) => Promise<T>;
     signers: Signers;
   }
@@ -16,12 +14,4 @@ declare module "mocha" {
 
 export interface Signers {
   admin: SignerWithAddress;
-  bob: SignerWithAddress;
-  alice: SignerWithAddress;
-
-  bhupat: SignerWithAddress;
-  akshay: SignerWithAddress;
-  priyanshu: SignerWithAddress;
-  treasury: SignerWithAddress;
-  validator: Signer;
 }
