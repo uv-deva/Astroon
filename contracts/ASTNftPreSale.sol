@@ -186,7 +186,6 @@ contract ASTNftPresale is
         }
         payable(owner()).transfer(msg.value);
         emit BoughtNFT(_msgSender(), _amount, saleId);
-
     }
 
     function safeTransferFrom(

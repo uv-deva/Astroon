@@ -6,7 +6,7 @@ import { ASTNFT, ASTNFT__factory } from "../../src/types";
 import { readContractAddress, writeContractAddress } from "./addresses/utils";
 import cArguments from "./arguments/astnft";
 
-task("deploy:ASTNFT")
+task("deploy:ASTNftPresale")
   .addParam("signer", "Index of the signer in the metamask address list")
   .setAction(async function (taskArguments: TaskArguments, { ethers, upgrades }) {
     console.log("--- start deploying the AST NFT Contract ---");
@@ -14,10 +14,12 @@ task("deploy:ASTNFT")
     const index = Number(taskArguments.signer);
 
     // Use accounts[1] as the signer for the real roll
-    const nftFactory: ASTNFT__factory = <ASTNFT__factory>await ethers.getContractFactory("ASTNFT", accounts[index]);
+    const nftFactory: ASTNFT__factory = <ASTNFT__factory>await ethers.getContractFactory("ASTNftPresale", accounts[index]);
 
     const astNFTProxy: ASTNFT = <ASTNFT>(
-      await nftFactory.deploy(cArguments.TOKENURIPREFIX, cArguments.CONTRACTURI)
+      await upgrades.deployProxy(nftFactory, [cArguments.Name, cArguments.symbol, cArguments.TOKENURIPREFIX, cArguments.tokenAddress, cArguments.baseExtension, cArguments.maxPresaleLimt, cArguments.maxPresaleLimt], {
+        initializer: "initialize",
+      })
     );
     await astNFTProxy.deployed();
     writeContractAddress("astNFT", astNFTProxy.address);
@@ -28,7 +30,7 @@ task("verify:ASTNFT")
   .addParam("contractAddress", "Input the deployed contract address")
   .setAction(async function (taskArguments: TaskArguments, { run }) {
     await run("verify:verify", {
-      address: taskArguments.contractAddress,
-      constructorArguments: [cArguments.TOKENURIPREFIX, cArguments.CONTRACTURI],
+      address: "0xa205a2B01E8A1A3f47C12158129EC7384224B222",
+      constructorArguments: [cArguments.Name, cArguments.symbol, cArguments.TOKENURIPREFIX, cArguments.tokenAddress, cArguments.baseExtension, cArguments.maxPresaleLimt, cArguments.maxPresaleLimt],
     });
   });

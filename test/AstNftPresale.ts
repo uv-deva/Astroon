@@ -55,6 +55,9 @@ describe("Unit Tests", function () {
     describe("ASTNFT", () => {
         it("PreSale buy one by one", async function () {
 
+            await truffleAssert.reverts(astNft.connect(user).buyPublicSale(5, {value: (5*(1*10**18 + 0.1*10**18)).toString()}), 'PublicSale is InActive');
+
+
             await token.transfer(user.address, (110*10**18).toString());
             var tx = await astNft.connect(user).buyPresale(1,{ value: (1*(1*10**18 + 0.1*10**18)).toString()});
             var txn = await tx.wait();

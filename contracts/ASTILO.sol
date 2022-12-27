@@ -15,23 +15,19 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "hardhat/console.sol";
 
 /**
  * @title ASTILO
  * @dev ASTILO contract is Ownable
  **/
-contract ASTILO is
-    OwnableUpgradeable,
-    PausableUpgradeable,
-    ReentrancyGuardUpgradeable
-{
+contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {
     IERC20Upgradeable token;
     /// @dev Merkle root for a whitelist users
     bytes32 private merkleRoot;
 
     uint256 private saleId;
     uint256 public initialTokens; // Initial number of tokens available
-    uint256 public raisedAmount;
     bool public presaleM;
     bool public publicM;
 
@@ -40,10 +36,12 @@ contract ASTILO is
         uint256 cap; // Cap in Ether
         uint256 start; // Oct 17, 2022 @ 12:00 EST
         uint256 _days; // 45 Day
-        uint256 cliff;
+        uint256 cliffDuration;
         uint256 vesting;
         uint256 thresHold;
-
+        uint256 raisedIn;
+        uint256 tokenSold;
+        uint256 minBound; //min to buy
     }
 
     struct UserToken {
@@ -52,12 +50,11 @@ contract ASTILO is
         uint256 claimed;
         uint256 lastClaimed;
         uint256 createdOn;
+        uint256 cliff;
     }
 
-
     mapping(uint256 => SaleDetail) public salesDetailMap;
-    mapping(uint256=>mapping(address => UserToken)) public userTokenMap;
-
+    mapping(uint256 => mapping(address => UserToken)) public userTokenMap;
 
     /**
      * BoughtTokens
@@ -71,10 +68,7 @@ contract ASTILO is
      * initialize
      * @dev Initialize the contract
      **/
-    function initialize(address _tokenAddr, uint256 _initialTokens)
-        external
-        initializer
-    {
+    function initialize(address _tokenAddr, uint256 _initialTokens) external initializer {
         require(_tokenAddr != address(0));
         require(_initialTokens > 0);
         initialTokens = _initialTokens * 10**18;
@@ -88,31 +82,38 @@ contract ASTILO is
     /**
      * @notice startTokenSale for starting any token sale
      */
+
+    function set_initialTokens(uint256 _newValue) external onlyOwner {
+        initialTokens = _newValue * 10**18;
+    }
+
     function startTokenSale(
         uint256 _rate,
         uint256 _cap,
         uint256 _start,
         uint256 _ddays,
         uint256 _thresHold,
-        uint256 _cliff,
-        uint256 _vesting
+        uint256 _cliffDuration,
+        uint256 _vesting,
+        uint256 _minBound
     ) external whenNotPaused onlyOwner returns (uint256) {
         saleId++;
-        SaleDetail memory detail;
-        detail.rate = _rate;
-        detail.cap = _cap;
-        detail.start = _start;
-        detail._days = _ddays;
-        detail.cliff = block.timestamp + (_cliff * 1 days);
-        detail.vesting = _vesting;
-        detail.thresHold = _thresHold;
-        salesDetailMap[saleId] = detail;
 
+        salesDetailMap[saleId] = SaleDetail(
+            _rate,
+            _cap,
+            _start,
+            _ddays,
+            _cliffDuration * 1 days,
+            _vesting,
+            _thresHold,
+            salesDetailMap[saleId].raisedIn,
+            salesDetailMap[saleId].tokenSold,
+            _minBound
+        );
         emit SaleCreated(saleId);
         return saleId;
     }
-    
-
 
     /**
      * @notice Update Merkel Root to Whitelist users
@@ -122,21 +123,19 @@ contract ASTILO is
         merkleRoot = _merkleRoot;
     }
 
-    function togglePresale() public onlyOwner {
+    function togglePresale() external onlyOwner {
         presaleM = !presaleM;
     }
-    
-     
-    function togglePublicSale() public onlyOwner {
+
+    function togglePublicSale() external onlyOwner {
         publicM = !publicM;
     }
 
-    function pause() public onlyOwner {
+    function pause() external onlyOwner {
         _pause();
     }
-    // abcdefghijklmnopqrstuvwxyz
 
-    function unpause() public onlyOwner {
+    function unpause() external onlyOwner {
         _unpause();
     }
 
@@ -153,10 +152,7 @@ contract ASTILO is
      */
     modifier checkWhitelist(bytes32[] memory _merkleProof) {
         bytes32 sender = keccak256(abi.encodePacked(_msgSender()));
-        require(
-            MerkleProofUpgradeable.verify(_merkleProof, merkleRoot, sender),
-            "not whitelisted"
-        );
+        require(MerkleProofUpgradeable.verify(_merkleProof, merkleRoot, sender), "not whitelisted");
         _;
     }
 
@@ -177,7 +173,7 @@ contract ASTILO is
      **/
     function goalReached(uint256 _saleId) public view returns (bool) {
         SaleDetail memory detail = salesDetailMap[_saleId];
-        return (raisedAmount >= detail.cap * 1 ether);
+        return (detail.raisedIn >= detail.cap * 1 ether);
     }
 
     /**
@@ -195,48 +191,46 @@ contract ASTILO is
      * buyTokens
      * @dev function that sells available tokens
      **/
-    function preSaleBuy(bytes32[] calldata _proof)
-        public
-        payable
-        whenNotPaused
-        nonReentrant
-        checkWhitelist(_proof)
-    {
+    function preSaleBuy(bytes32[] calldata _proof) external payable whenNotPaused nonReentrant checkWhitelist(_proof) {
+        require(isActive(saleId), "Sale is not active");
         require(presaleM, "Presale is OFF");
-        require(msg.value > 0, "invalid amount");
         SaleDetail memory detail = salesDetailMap[saleId];
-        uint256 _tokens = calculateToken(msg.value, detail.rate);
-        require(_tokens <= detail.thresHold, "buying more than max allowed");
+        require(msg.value > 0, "invalid amount");
         UserToken memory userToken;
+        console.log(detail.rate);
+        console.log(msg.value);
+        uint256 _tokens = calculateToken(msg.value, detail.rate);
+        console.log(_tokens);
+        require(
+            _tokens >= detail.minBound && _tokens <= detail.thresHold && _tokens <= initialTokens,
+            "buying more than max allowed"
+        );
         userToken.saleRound = saleId;
         userToken.createdOn = block.timestamp;
         userToken.lastClaimed = block.timestamp;
         userToken.tokens += _tokens;
-        
+        userToken.cliff = block.timestamp + detail.cliffDuration;
+
         emit BoughtTokens(msg.sender, _tokens, saleId); // log event onto the blockchain
-        raisedAmount += msg.value; // Increment raised amount
+        detail.tokenSold += _tokens;
+        initialTokens -= _tokens;
+        detail.raisedIn += msg.value; // Increment raised amount
         userTokenMap[saleId][_msgSender()] = userToken;
         payable(owner()).transfer(msg.value); // Send money to owner
     }
 
-    function calculateToken(uint256 amount, uint256 _rate)
-        public
-        pure
-        returns (uint256)
-    {
+    function calculateToken(uint256 amount, uint256 _rate) public pure returns (uint256) {
         return (amount / _rate) * 10**18;
     }
 
     function claim(uint256 _saleId) external whenNotPaused nonReentrant {
         SaleDetail memory detail = salesDetailMap[_saleId];
-        require(block.timestamp > detail.cliff, "cliff not ended");
         UserToken memory utoken = userTokenMap[_saleId][_msgSender()];
+        require(block.timestamp > utoken.cliff, "cliff not ended");
         require(utoken.saleRound == _saleId, "not purchase data");
-        uint256 amount = _calculateReleaseToken(
-            utoken.tokens,
-            detail.vesting,
-            utoken.lastClaimed
-        );
+        uint256 claimedOn = utoken.lastClaimed == utoken.createdOn ? utoken.cliff : utoken.lastClaimed;
+        uint256 amount = calculateReleaseToken(utoken.tokens, detail.vesting, claimedOn);
+        require(amount > 0, "no rewards");
         require(amount < tokensAvailable(), "insufficent token balance");
         utoken.claimed += amount;
         utoken.lastClaimed = block.timestamp;
@@ -245,17 +239,36 @@ contract ASTILO is
         emit Claimed(_msgSender(), amount, _saleId);
     }
 
-    function _calculateReleaseToken(
+    function calculateReleaseToken(
         uint256 _token,
         uint256 vesting,
         uint256 lastClaimed
-    ) internal view returns (uint256) {
+    ) public view returns (uint256) {
         uint256 tokenperDay = _token / vesting;
         return tokenperDay * _getDays(lastClaimed);
     }
 
+    function getReward(uint256 _saleId, address _addr) external view whenNotPaused returns (uint256) {
+        SaleDetail memory detail = salesDetailMap[_saleId];
+        UserToken memory utoken = userTokenMap[_saleId][_addr];
+        uint256 claimedOn = utoken.lastClaimed == utoken.createdOn ? utoken.cliff : utoken.lastClaimed;
+        uint256 amount = calculateReleaseToken(utoken.tokens, detail.vesting, claimedOn);
+        return amount;
+    }
+
     function _getDays(uint256 _timestamp) internal view returns (uint256) {
         return (block.timestamp - _timestamp) / 86400;
+    }
+
+    function updateClaim(
+        uint256 _saleId,
+        uint256 _date,
+        address _user
+    ) external onlyOwner {
+        UserToken memory utoken = userTokenMap[_saleId][_user];
+        require(utoken.saleRound == _saleId, "not purchase data");
+        utoken.lastClaimed = _date;
+        userTokenMap[_saleId][_user] = utoken;
     }
 
     /**
@@ -264,15 +277,20 @@ contract ASTILO is
      * @dev function that sells available tokens
      **/
     function buyTokens() public payable whenNotPaused nonReentrant {
+        require(isActive(saleId), "Sale is not active");
         require(publicM, "sale is OFF");
+        require(msg.value > 0);
         SaleDetail memory detail = salesDetailMap[saleId];
         uint256 tokens = calculateToken(msg.value, detail.rate);
-        require(tokens < tokensAvailable(), "insufficent token balance");
+        require(tokens < detail.thresHold, "buying more than max allowed");
         emit BoughtTokens(msg.sender, tokens, saleId); // log event onto the blockchain
-        raisedAmount += msg.value; // Increment raised amount
-        token.transfer(msg.sender, tokens); // Send tokens to buyer
-        payable(owner()).transfer(msg.value); // Send money to owner
+        detail.raisedIn += msg.value; // Increment raised amount
+        detail.tokenSold += tokens;
+        initialTokens -= tokens;
 
+        token.transfer(msg.sender, tokens); // Send tokens to buyer
+
+        payable(owner()).transfer(msg.value); // Send money to owner
     }
 
     /**
@@ -287,10 +305,7 @@ contract ASTILO is
         payable(admin).transfer(address(this).balance);
     }
 
-    function withdrawToken(address admin, address _paymentToken)
-        external
-        onlyOwner
-    {
+    function withdrawToken(address admin, address _paymentToken) external onlyOwner {
         IERC20Upgradeable _token = IERC20Upgradeable(_paymentToken);
         uint256 amount = _token.balanceOf(address(this));
         token.transfer(admin, amount);
