@@ -15,7 +15,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "hardhat/console.sol";
 
 /**
  * @title ASTILO
@@ -197,10 +196,7 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         SaleDetail memory detail = salesDetailMap[saleId];
         require(msg.value > 0, "invalid amount");
         UserToken memory userToken;
-        console.log(detail.rate);
-        console.log(msg.value);
         uint256 _tokens = calculateToken(msg.value, detail.rate);
-        console.log(_tokens);
         require(
             _tokens >= detail.minBound && _tokens <= detail.thresHold && _tokens <= initialTokens,
             "buying more than max allowed"
