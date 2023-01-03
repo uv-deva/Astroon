@@ -71,6 +71,7 @@ contract ASTNftPresale is
     mapping(uint256=>tierInfo) public tierMap;
     mapping(uint256 => CATEGORYTYPE) category;
     mapping(CATEGORYTYPE => uint256[]) tokensByCategory;
+    mapping(uint256 => mapping(address => uint256)) lastPurchaseAt;
 
     function initialize(
         string memory _name,
@@ -233,6 +234,7 @@ contract ASTNftPresale is
         override(ERC721Upgradeable, ERC721EnumerableUpgradeable)
         whenNotPaused
     {
+        lastPurchaseAt[tokenId][to] = block.timestamp;
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
 
@@ -305,6 +307,19 @@ contract ASTNftPresale is
         return (block.timestamp >= detail.startTime && // Must be after the start date
             block.timestamp <= detail.endTime // Must be before the end date
         );
+    }
+
+    function getCategory(uint256 tokenId) external view returns(CATEGORYTYPE) {
+        return category[tokenId];
+    }
+
+    function getAllTokenByCategory(CATEGORYTYPE nftType) external view returns(uint256[] memory) {
+        return tokensByCategory[nftType];
+    }
+
+    function getLastPurchaseTime(uint256 tokenId) external view returns(uint256) {
+        address owner = ownerOf(tokenId);
+        return lastPurchaseAt[tokenId][owner];
     }
 
     function pause() external onlyOwner {
