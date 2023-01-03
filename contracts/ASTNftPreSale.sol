@@ -27,13 +27,13 @@ contract ASTNftPresale is
 
     enum SALETYPE {PRIVATE_SALE, PUBLIC_SALE}
 
-    enum CATEGORYTYPE {BRONZE, SILVER, GOLD, PLATINUM}
+    enum CATEGORY {BRONZE, SILVER, GOLD, PLATINUM}
 
     using Strings for uint256;
     using CountersUpgradeable for CountersUpgradeable.Counter;
     CountersUpgradeable.Counter private tokenIdCount;
 
-    IERC20MetadataUpgradeable token;
+    IERC20MetadataUpgradeable public token;
 
     uint256 private saleId;
     string public baseURI;
@@ -58,19 +58,21 @@ contract ASTNftPresale is
 
     // Events
     event SaleStart(
-        uint256 saleId
+        SALETYPE saleId
         );
+
     event BoughtNFT(
         address indexed to,
         uint256 amount,
-        uint256 saleId
+        SALETYPE saleId,
+        CATEGORY[] category
     );
 
     // Mapping
     mapping(SALETYPE => SaleInfo) public SaleInfoMap; // sale mapping
     mapping(uint256=>tierInfo) public tierMap;
-    mapping(uint256 => CATEGORYTYPE) category;
-    mapping(CATEGORYTYPE => uint256[]) tokensByCategory;
+    mapping(uint256 => CATEGORY) category;
+    mapping(CATEGORY => uint256[]) tokensByCategory;
     mapping(uint256 => mapping(address => uint256)) lastPurchaseAt;
 
     function initialize(
@@ -109,7 +111,7 @@ contract ASTNftPresale is
         uint256 _maxSupply,
         uint256 _startTime,
         uint256 _endTime
-    ) external onlyOwner returns (uint256) {
+    ) external onlyOwner returns (SALETYPE) {
         SaleInfoMap[saleType] = SaleInfo (
             _cost,
             _mintCost,
@@ -117,8 +119,12 @@ contract ASTNftPresale is
             _startTime,
             _endTime
         );
-        emit SaleStart(saleId);
-        return saleId;
+        emit SaleStart(saleType);
+        return saleType;
+    }
+
+    function UpdateTokenAddress(address _tokenAddr) external onlyOwner {
+        token = IERC20MetadataUpgradeable(_tokenAddr);
     }
 
     function setTireMap(uint256 tierLevel, uint256 _min, uint256 _max) external onlyOwner {
@@ -151,7 +157,7 @@ contract ASTNftPresale is
         );
     }
 
-    function buyPresale(CATEGORYTYPE[] memory _category, string[] memory _tokenURI, uint256 nftQty) external payable {
+    function buyPresale(CATEGORY[] memory _category, string[] memory _tokenURI, uint256 nftQty) external payable {
         require(
             SaleInfoMap[SALETYPE.PRIVATE_SALE].startTime <= block.timestamp && 
             SaleInfoMap[SALETYPE.PRIVATE_SALE].endTime >= block.timestamp,
@@ -181,10 +187,10 @@ contract ASTNftPresale is
             i++;
         }
         payable(owner()).transfer(msg.value);
-        emit BoughtNFT(_msgSender(), nftQty, saleId);
+        emit BoughtNFT(_msgSender(), nftQty, SALETYPE.PRIVATE_SALE, _category);
     }
 
-    function buyPublicSale(CATEGORYTYPE[] memory _category, string[] memory _tokenURI, uint256 nftQty) external payable {
+    function buyPublicSale(CATEGORY[] memory _category, string[] memory _tokenURI, uint256 nftQty) external payable {
         require(
             SaleInfoMap[SALETYPE.PUBLIC_SALE].startTime <= block.timestamp &&
             SaleInfoMap[SALETYPE.PUBLIC_SALE].endTime >= block.timestamp,
@@ -209,7 +215,7 @@ contract ASTNftPresale is
             i++;
         }
         payable(owner()).transfer(msg.value);
-        emit BoughtNFT(_msgSender(), nftQty, saleId);
+        emit BoughtNFT(_msgSender(), nftQty, SALETYPE.PUBLIC_SALE, _category);
     }
 
     function safeTransferFrom(
@@ -309,11 +315,11 @@ contract ASTNftPresale is
         );
     }
 
-    function getCategory(uint256 tokenId) external view returns(CATEGORYTYPE) {
+    function getCategory(uint256 tokenId) external view returns(CATEGORY) {
         return category[tokenId];
     }
 
-    function getAllTokenByCategory(CATEGORYTYPE nftType) external view returns(uint256[] memory) {
+    function getAllTokenByCategory(CATEGORY nftType) external view returns(uint256[] memory) {
         return tokensByCategory[nftType];
     }
 
