@@ -35,7 +35,7 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         uint256 cap; // Cap in Ether
         uint256 start; // Oct 17, 2022 @ 12:00 EST
         uint256 _days; // 45 Day
-        uint256 cliffDuration;
+        uint256 cliff;
         uint256 vesting;
         uint256 thresHold;
         uint256 raisedIn;
@@ -49,7 +49,7 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         uint256 claimed;
         uint256 lastClaimed;
         uint256 createdOn;
-        uint256 cliff;
+        uint256 userCliff;
     }
 
     mapping(uint256 => SaleDetail) public salesDetailMap;
@@ -82,7 +82,7 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
      * @notice startTokenSale for starting any token sale
      */
 
-    function set_initialTokens(uint256 _newValue) external onlyOwner {
+    function set_initialTokens(uint256 _newValue) public onlyOwner {
         initialTokens = _newValue * 10**18;
     }
 
@@ -92,24 +92,23 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         uint256 _start,
         uint256 _ddays,
         uint256 _thresHold,
-        uint256 _cliffDuration,
+        uint256 _cliff,
         uint256 _vesting,
         uint256 _minBound
     ) external whenNotPaused onlyOwner returns (uint256) {
         saleId++;
 
-        salesDetailMap[saleId] = SaleDetail(
-            _rate,
-            _cap,
-            _start,
-            _ddays,
-            _cliffDuration * 1 days,
-            _vesting,
-            _thresHold,
-            salesDetailMap[saleId].raisedIn,
-            salesDetailMap[saleId].tokenSold,
-            _minBound
-        );
+        SaleDetail memory detail;
+        detail.rate = _rate;
+        detail.cap = _cap;
+        detail.start = _start;
+        detail._days = _ddays;
+        detail.cliff = _cliff * 1 days;
+        detail.vesting = _vesting;
+        detail.thresHold = _thresHold;
+        detail.tokenSold;
+        detail.minBound = _minBound;
+        salesDetailMap[saleId] = detail;
         emit SaleCreated(saleId);
         return saleId;
     }
@@ -122,19 +121,19 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         merkleRoot = _merkleRoot;
     }
 
-    function togglePresale() external onlyOwner {
+    function togglePresale() public onlyOwner {
         presaleM = !presaleM;
     }
 
-    function togglePublicSale() external onlyOwner {
+    function togglePublicSale() public onlyOwner {
         publicM = !publicM;
     }
 
-    function pause() external onlyOwner {
+    function pause() public onlyOwner {
         _pause();
     }
 
-    function unpause() external onlyOwner {
+    function unpause() public onlyOwner {
         _unpause();
     }
 
@@ -190,12 +189,12 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
      * buyTokens
      * @dev function that sells available tokens
      **/
-    function preSaleBuy(bytes32[] calldata _proof) external payable whenNotPaused nonReentrant checkWhitelist(_proof) {
+    function preSaleBuy(bytes32[] calldata _proof) public payable whenNotPaused nonReentrant checkWhitelist(_proof) {
         require(isActive(saleId), "Sale is not active");
         require(presaleM, "Presale is OFF");
         SaleDetail memory detail = salesDetailMap[saleId];
         require(msg.value > 0, "invalid amount");
-        UserToken memory userToken;
+        UserToken memory userToken = userTokenMap[saleId][_msgSender()];
         uint256 _tokens = calculateToken(msg.value, detail.rate);
         require(
             _tokens >= detail.minBound && _tokens <= detail.thresHold && _tokens <= initialTokens,
@@ -204,8 +203,8 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         userToken.saleRound = saleId;
         userToken.createdOn = block.timestamp;
         userToken.lastClaimed = block.timestamp;
+        userToken.userCliff = block.timestamp + detail.cliff;
         userToken.tokens += _tokens;
-        userToken.cliff = block.timestamp + detail.cliffDuration;
 
         emit BoughtTokens(msg.sender, _tokens, saleId); // log event onto the blockchain
         detail.tokenSold += _tokens;
@@ -222,9 +221,9 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
     function claim(uint256 _saleId) external whenNotPaused nonReentrant {
         SaleDetail memory detail = salesDetailMap[_saleId];
         UserToken memory utoken = userTokenMap[_saleId][_msgSender()];
-        require(block.timestamp > utoken.cliff, "cliff not ended");
+        require(block.timestamp > utoken.userCliff, "cliff not ended");
         require(utoken.saleRound == _saleId, "not purchase data");
-        uint256 claimedOn = utoken.lastClaimed == utoken.createdOn ? utoken.cliff : utoken.lastClaimed;
+        uint256 claimedOn = utoken.lastClaimed == utoken.createdOn ? utoken.userCliff : utoken.lastClaimed;
         uint256 amount = calculateReleaseToken(utoken.tokens, detail.vesting, claimedOn);
         require(amount > 0, "no rewards");
         require(amount < tokensAvailable(), "insufficent token balance");
@@ -241,13 +240,14 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         uint256 lastClaimed
     ) public view returns (uint256) {
         uint256 tokenperDay = _token / vesting;
-        return tokenperDay * _getDays(lastClaimed);
+        uint256 day = _getDays(lastClaimed);
+        return tokenperDay * (day > vesting ? vesting : day);
     }
 
     function getReward(uint256 _saleId, address _addr) external view whenNotPaused returns (uint256) {
         SaleDetail memory detail = salesDetailMap[_saleId];
         UserToken memory utoken = userTokenMap[_saleId][_addr];
-        uint256 claimedOn = utoken.lastClaimed == utoken.createdOn ? utoken.cliff : utoken.lastClaimed;
+        uint256 claimedOn = utoken.lastClaimed == utoken.createdOn ? utoken.userCliff : utoken.lastClaimed;
         uint256 amount = calculateReleaseToken(utoken.tokens, detail.vesting, claimedOn);
         return amount;
     }
@@ -265,6 +265,17 @@ contract ASTILO is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgra
         require(utoken.saleRound == _saleId, "not purchase data");
         utoken.lastClaimed = _date;
         userTokenMap[_saleId][_user] = utoken;
+    }
+
+    function updateUserCliff(
+        uint256 _saleId,
+        uint256 _timestamp,
+        address _userAdd
+    ) external onlyOwner {
+        UserToken memory utoken = userTokenMap[_saleId][_userAdd];
+        require(utoken.saleRound == _saleId, "not purchase data");
+        utoken.userCliff = _timestamp;
+        userTokenMap[_saleId][_userAdd] = utoken;
     }
 
     /**
