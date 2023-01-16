@@ -116,17 +116,19 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
             rewardAmount = dayCount <= 365
                 ? dayCount * RewardsMap[category][1]
                 : (dayCount > 365 && timeDuration <= 730)
-                ? (365 * RewardsMap[category][1]) + (dayCount - 365 * RewardsMap[category][1])
-                : (365 * RewardsMap[category][1]) + (365 * RewardsMap[category][2]) + ((dayCount - 730) * RewardsMap[category][3]);
+                ? (365 * RewardsMap[category][1]) + ((dayCount - 365) * RewardsMap[category][2])
+                : dayCount > 730 && dayCount <= 1095
+                ? (365 * RewardsMap[category][1]) + (365 * RewardsMap[category][2]) + ((dayCount - 730) * RewardsMap[category][3])
+                : (365 * RewardsMap[category][1]) + (365 * RewardsMap[category][2]) + (365 * RewardsMap[category][3]);
         }
         if(user.lastClaim[_id] > purchaseTime) {
             uint256 cliamDays = (user.lastClaim[_id] - purchaseTime) / 1 days;
-            uint256 claimedAmount = cliamDays >= 365
+            uint256 claimedAmount = cliamDays <= 365
                 ? cliamDays * RewardsMap[category][1]
                 : cliamDays > 365 && cliamDays <= 730
-                ? (365 * RewardsMap[category][1]) + ((cliamDays - 365) * RewardsMap[category][2])
+                ? (365 * RewardsMap[category][1]) + (cliamDays * RewardsMap[category][2])
                 : cliamDays > 730 && cliamDays <= 1095
-                ? (365 * RewardsMap[category][1]) + (365 * RewardsMap[category][2]) + ((cliamDays - 730) * RewardsMap[category][3])
+                ? (365 * RewardsMap[category][1]) + (365 * RewardsMap[category][2]) + (cliamDays * RewardsMap[category][3])
                 : (365 * RewardsMap[category][1]) + (365 * RewardsMap[category][2]) + (365 * RewardsMap[category][3]);
             rewardAmount -= claimedAmount;
         }
