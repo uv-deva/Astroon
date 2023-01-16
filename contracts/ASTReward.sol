@@ -110,6 +110,25 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         return true;
     }
 
+    function getUserInfo(
+        address user
+    )
+        external
+        view
+        returns(uint256 lastRewardCliamed, uint256 totalRewardsClaimed, uint256 toClaim)
+    {
+        UserTokenDetails storage userDetails = userTokenDetailsMap[user];
+        return (userDetails.lastRewardCliamed, userDetails.totalRewardsClaimed, userDetails.toClaim);
+    }
+
+    function getUserlastPurchaseById(
+        address user,
+        uint256 tokenId
+    ) external view returns(uint256 lastPurchase) {
+        UserTokenDetails storage userDetails = userTokenDetailsMap[user];
+        return userDetails.lastClaim[tokenId];
+    }
+
     function setRewardsMap(uint256 _rewards, uint256 _year, CATEGORY _category) external onlyOwner {
         RewardsMap[_category][_year] = _rewards;
     }
