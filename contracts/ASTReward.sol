@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -7,8 +7,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "./interfaces/IASTNftSale.sol";
+import "./DateTime.sol";
 
-contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {
+contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable, DateTime {
     IASTNftSale public nftContract;
     IERC20Upgradeable public token;
     IASTNftSale public _astNftsale;
@@ -30,6 +31,9 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
     mapping(address => UserTokenDetails) public userTokenDetailsMap;
 
     mapping(CATEGORY => mapping(uint256 => uint256)) public RewardsMap;
+
+    mapping(uint256 => uint256) tokenLimitPerMonth;
+    mapping(uint256 => mapping(uint256 => uint256)) tokenCliamedPerMonth;
 
     event HoldngRewardsClaimed(uint256 tokenId, uint256 rewards, CATEGORY _category);
     event TotalRewardsClaimed(uint256 totalRewards, uint256 rewardAmount, uint256 SoldTokensRewards);
@@ -53,8 +57,31 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         RewardsMap[CATEGORY.SILVER][3] = 0.5 * 10 ** 18;
         RewardsMap[CATEGORY.GOLD][3] = 0.75 * 10 ** 18;
         RewardsMap[CATEGORY.PLATINUM][3] = 1 * 10 ** 18;
+
+        tokenLimitPerMonth[2] = 100 * 10 ** 18;
+        tokenLimitPerMonth[3] = 200 * 10 ** 18;
+        tokenLimitPerMonth[4] = 300 * 10 ** 18;
+        tokenLimitPerMonth[5] = 300 * 10 ** 18;
+        tokenLimitPerMonth[6] = 750 * 10 ** 18;
+        tokenLimitPerMonth[7] = 750 * 10 ** 18;
+        tokenLimitPerMonth[8] = 750 * 10 ** 18;
+        tokenLimitPerMonth[9] = 750 * 10 ** 18;
+        tokenLimitPerMonth[10] = 1500 * 10 ** 18;
+        tokenLimitPerMonth[11] = 1500 * 10 ** 18;
+        tokenLimitPerMonth[12] = 2500 * 10 ** 18;
+
         __Ownable_init();
         __Pausable_init();
+    }
+
+    function setTokenLimit(
+        uint256 month,
+        uint256 amount
+    )
+        external
+        onlyOwner
+    {
+        tokenLimitPerMonth[month] = amount;
     }
 
     function claim() external nonReentrant {
@@ -71,6 +98,8 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
             emit HoldngRewardsClaimed(id, rewards, CATEGORY(x));
         }
         uint256 claimedRewards = rewards + userDetails.toClaim;
+        (uint256 month, uint256 year) = getMonthAndYear();
+        require(tokenCliamedPerMonth[year][month] + claimedRewards <= tokenLimitPerMonth[month], "Month Limit Reached");
         userDetails.lastRewardCliamed = claimedRewards;
         userDetails.totalRewardsClaimed += claimedRewards;
         token.transfer(_msgSender(), claimedRewards);
@@ -110,25 +139,6 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         return true;
     }
 
-    function getUserInfo(
-        address user
-    )
-        external
-        view
-        returns(uint256 lastRewardCliamed, uint256 totalRewardsClaimed, uint256 toClaim)
-    {
-        UserTokenDetails storage userDetails = userTokenDetailsMap[user];
-        return (userDetails.lastRewardCliamed, userDetails.totalRewardsClaimed, userDetails.toClaim);
-    }
-
-    function getUserlastPurchaseById(
-        address user,
-        uint256 tokenId
-    ) external view returns(uint256 lastPurchase) {
-        UserTokenDetails storage userDetails = userTokenDetailsMap[user];
-        return userDetails.lastClaim[tokenId];
-    }
-
     function setRewardsMap(uint256 _rewards, uint256 _year, CATEGORY _category) external onlyOwner {
         RewardsMap[_category][_year] = _rewards;
     }
@@ -139,5 +149,10 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
 
     function unpause() public onlyOwner {
         _unpause();
+    }
+
+    function getMonthAndYear() public view returns(uint256 month, uint256 year) {
+        month = getMonth(block.timestamp);
+        year = getYear(block.timestamp);
     }
 }
