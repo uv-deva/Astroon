@@ -5,11 +5,10 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "./interfaces/IASTNftSale.sol";
 import "./DateTime.sol";
 
-contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable, DateTime {
+contract ASTTokenRewards is OwnableUpgradeable, ReentrancyGuardUpgradeable, DateTime {
     IASTNftSale public nftContract;
     IERC20Upgradeable public token;
     IASTNftSale public _astNftsale;
@@ -28,17 +27,31 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         mapping(uint256 => uint256) lastClaim;
     }
 
-    mapping(address => UserTokenDetails) public userTokenDetailsMap;
+    mapping(address => UserTokenDetails) internal userTokenDetailsMap;
 
     mapping(CATEGORY => mapping(uint256 => uint256)) public RewardsMap;
 
     mapping(uint256 => uint256) tokenLimitPerMonth;
     mapping(uint256 => mapping(uint256 => uint256)) tokenCliamedPerMonth;
 
-    event HoldngRewardsClaimed(uint256 tokenId, uint256 rewards, CATEGORY _category);
-    event TotalRewardsClaimed(uint256 totalRewards, uint256 rewardAmount, uint256 SoldTokensRewards);
+    event HoldngRewardsClaimed(
+        uint256 tokenId,
+        uint256 rewards,
+        CATEGORY _category
+    );
+    event TotalRewardsClaimed(
+        uint256 totalRewards,
+        uint256 rewardAmount,
+        uint256 SoldTokensRewards
+    );
 
-    function initialize(address _nftaddress, address _AstTokenAddr) public initializer {
+    function initialize(
+        address _nftaddress,
+        address _AstTokenAddr
+    )
+        public
+        initializer
+    {
         nftContract = IASTNftSale(_nftaddress);
         token = IERC20Upgradeable(_AstTokenAddr);
         _astNftsale = IASTNftSale(_nftaddress);
@@ -71,7 +84,6 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         tokenLimitPerMonth[12] = 2500 * 10 ** 18;
 
         __Ownable_init();
-        __Pausable_init();
     }
 
     function setTokenLimit(
@@ -84,7 +96,10 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         tokenLimitPerMonth[month] = amount;
     }
 
-    function claim() external nonReentrant {
+    function claim()
+        external
+        nonReentrant
+    {
         address user = msg.sender;
         uint256 rewards;
         uint256 nftBalance = nftContract.balanceOf(user);
@@ -102,11 +117,21 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         require(tokenCliamedPerMonth[year][month] + claimedRewards <= tokenLimitPerMonth[month], "Month Limit Reached");
         userDetails.lastRewardCliamed = claimedRewards;
         userDetails.totalRewardsClaimed += claimedRewards;
+        tokenCliamedPerMonth[year][month] += claimedRewards;
         token.transfer(_msgSender(), claimedRewards);
         emit TotalRewardsClaimed(claimedRewards, rewards, userDetails.toClaim);
     }
 
-    function getRewardsCalc(uint8 _category, uint256 _id, address _addr) public view returns (uint256 rewardAmount) {
+    function getRewardsCalc(
+        uint8 _category,
+        uint256 _id,
+        address _addr
+    )
+        public
+        view
+        returns
+        (uint256 rewardAmount)
+    {
         UserTokenDetails storage user = userTokenDetailsMap[_addr];
         CATEGORY category = CATEGORY(_category);
         uint256 purchaseTime = nftContract.getLastPurchaseTime(_id, _addr);
@@ -134,26 +159,35 @@ contract ASTTokenRewards is OwnableUpgradeable, PausableUpgradeable, ReentrancyG
         }
     }
 
-    function updateRewardAmount(address _addr, uint256 rewardAmount) external returns(bool) {
+    function updateRewardAmount(
+        address _addr,
+        uint256 rewardAmount
+    )
+        external
+        returns(bool)
+    {
         require(address(nftContract) == msg.sender, "Invalid Caller");
         UserTokenDetails storage userDetails = userTokenDetailsMap[_addr];
         userDetails.toClaim = rewardAmount;
         return true;
     }
 
-    function setRewardsMap(uint256 _rewards, uint256 _year, CATEGORY _category) external onlyOwner {
+    function setRewardsMap(
+        uint256 _rewards,
+        uint256 _year,
+        CATEGORY _category
+    )
+        external
+        onlyOwner
+    {
         RewardsMap[_category][_year] = _rewards;
     }
 
-    function pause() public onlyOwner {
-        _pause();
-    }
-
-    function unpause() public onlyOwner {
-        _unpause();
-    }
-
-    function getMonthAndYear() public view returns(uint256 month, uint256 year) {
+    function getMonthAndYear()
+        public
+        view
+        returns(uint256 month, uint256 year)
+    {
         month = getMonth(block.timestamp);
         year = getYear(block.timestamp);
     }
