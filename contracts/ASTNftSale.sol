@@ -88,7 +88,9 @@ contract ASTNFTSale is
         address _tokenAddr,
         string memory _baseExtension,
         uint256 _maxPresaleLimit,
-        uint256 _minToken
+        uint256 _minToken,
+        address _receiverAddress,
+        uint96 _royaltyAmt
     )
         public
         initializer
@@ -108,6 +110,7 @@ contract ASTNFTSale is
         token = IERC20MetadataUpgradeable(_tokenAddr);
         saleId = 1;
         rewardEnable = true;
+        _setDefaultRoyalty(_receiverAddress, _royaltyAmt);
         tierMap[1].minValue = 100 * 10 ** 18;
         tierMap[1].maxValue = 300 * 10 ** 18;
         tierMap[2].minValue = (300 * 10 ** 18) + 1;
@@ -148,6 +151,18 @@ contract ASTNFTSale is
         );
         emit SaleStart(saleId);
         return saleId;
+    }
+
+    function setRoyalty(
+        address _receiver,
+        uint96 _royaltyAmt
+    )
+        external
+        onlyOwner
+    {
+        _setDefaultRoyalty(
+            _receiver,
+            _royaltyAmt);
     }
 
     function setRevealed()
